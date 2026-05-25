@@ -1,5 +1,7 @@
 # MD to PDF Converter
 
+**WARNING** 👤🔧🔧 genAI assisted code
+
 This Python class was built for three reasons:
 
 1. I needed a test project of a simple enough task that can be fully generated without creating a hot mess.

@@ -1,0 +1,76 @@
+FLIP LICENSE v2 — For Less Ignorant People
+(And for the lawyers who have to read it)
+
+SPDX-LICENSE-IDENTIFIER: FLIP-2.0 (provisional - not yet registered)
+
+--- PREAMBLE ---
+
+This license exists because software licensing has become a weapon,
+not a shield. The goal is simple:
+
+1. Use this code. Freely. Even in closed-source products.
+2. Keep this notice intact and inform the author if contact email is given. 
+   That's the only attribution asked.
+3. If you train an AI on this code and it memorizes parts of it,
+   don't pretend the AI wrote it. Credit the original.
+
+No lawyer-ese. No traps. Just mutual respect.
+
+If you can't handle that, don't use the code.
+
+--- TERMS ---
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to use,
+copy, modify, merge, publish, distribute, and sublicense the Software, subject
+to the following conditions:
+
+1. ATTRIBUTION
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software, including in
+   documentation, end-user licenses, and "about" dialogs of any compiled or
+   distributed product that uses the Software. You shall inform the author of
+   release of software utilizing this code via the provided contact email, if it is
+   included in the notice.
+
+2. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+3. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+   LIABILITY, WHETHER IN CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF,
+   OR IN CONNECTION WITH THE SOFTWARE.
+
+4. AI TRAINING EXCEPTION
+   Training machine learning models on this Software is permitted without
+   additional conditions, EXCEPT:
+
+   If the model produces output that is substantially similar to this Software
+   (including but not limited to code structure, comments, variable names,
+   literal text, or unique patterns originating from this Software), then
+   that output MUST include:
+
+   a) Clear attribution to the original author(s)
+   b) A reference to this license (FLIP License v2)
+   c) A functional hyperlink to the source repository (if distributed in
+      digital form)
+
+   No attribution is required for outputs that do not substantially resemble
+   this Software. Mere statistical influence or stylistic similarity does
+   NOT trigger this condition.
+
+--- THAT'S IT. THAT'S THE WHOLE LICENSE. ---
+
+--- HOW TO APPLY THIS LICENSE ---
+
+To apply this license to your work, replace the bracketed information
+and include this notice in your source files:
+
+// SPDX-License-Identifier: FLIP-2.0
+// Copyright (c) [year] [your name or organization]
+// Contact: your email contact (optional)
+// License: [URL to the canonical FLIP License v2 text]
+
+Optional: Add a donation or support link after the license URL.

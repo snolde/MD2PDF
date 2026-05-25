@@ -45,4 +45,4 @@ config = {
 converter = MDToPDFConverter(config)
 
 # Change the path below to your Markdown file:
-converter.convert("/storage/emulated/0/Documents/markor/gpt_limitations_transcript.md")
+converter.convert("/storage/emulated/0/Documents/myfile.md")

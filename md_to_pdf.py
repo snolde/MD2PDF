@@ -39,6 +39,7 @@ import urllib.request
 from pathlib import Path
 
 from fpdf import FPDF
+from fpdf.fonts import FontFace
 from markdown_it import MarkdownIt
 from PIL import Image as PilImage
 
@@ -471,7 +472,23 @@ class MDToPDFConverter:
             except Exception as exc:
                 print(f"[WARN] Could not register code font: {exc} - using Courier.")
                 self._code_font_name = "Courier"
-        pdf.set_auto_page_break(auto=True, margin=self.margin +8)
+        # Add fallback fonts
+        fallbacks = []
+        if os.path.exists("/system/fonts/NotoColorEmoji.ttf"):
+            pdf.add_font("NotoEmoji", fname="/system/fonts/NotoColorEmoji.ttf", uni=True)
+            fallbacks.append("NotoEmoji")
+            print("Emoji added")        
+        if os.path.exists("/system/fonts/NotoSansSymbols-Regular-Subsetted.ttf"):
+            pdf.add_font("NotoSymbols", fname="/system/fonts/NotoSansSymbols-Regular-Subsetted.ttf", uni=True)
+            fallbacks.append("NotoSymbols")
+            print("Symbols added")
+        if os.path.exists("/system/fonts/NotoSansSymbols-Regular-Subsetted2.ttf"):
+            pdf.add_font("NotoSymbols2", fname="/system/fonts/NotoSansSymbols-Regular-Subsetted2.ttf", uni=True)
+            fallbacks.append("NotoSymbols2")
+            print("Symbols2 added")       
+        if fallbacks:
+            pdf.set_fallback_fonts(fallbacks, exact_match=False)
+            pdf.set_auto_page_break(auto=True, margin=self.margin +8)
         pdf.add_page()
         pdf.set_margins(self.margin, self.margin, self.margin)
 
@@ -758,7 +775,8 @@ class MDToPDFConverter:
                     cx, cy = pdf.get_x(), pdf.get_y()
                 r, g, b = self.code_bg_color
                 pdf.set_fill_color(r, g, b)
-                pdf.rect(cx - 0.5, cy + 0.3, tw + 1.0, line_h + 0.2, style="F")
+                # GPT adjustments sucked. Corrected
+                pdf.rect(cx + 1, cy + 0.3, tw, line_h + 0.2, style="F")
                 pdf.set_x(cx)
                 pdf.write(line_h, text)
                 pdf.set_font(self._body_font_name, size=self.font_size)
@@ -834,13 +852,9 @@ class MDToPDFConverter:
         line_h  = chosen_size * 0.4 + 0.8
         total_h = line_h * len(final_lines) + TABLE_PADDING * 2
         r, g, b = self.code_bg_color
-        pdf.set_fill_color(r, g, b)
-        remaining = self.page_h - self.margin - 8 - pdf.get_y()
-        if total_h > remaining and total_h < (self.page_h - 2 * self.margin - 8):
-            pdf.add_page()
-        box_top = pdf.get_y()
-        pdf.rect(self.margin, box_top, self.available_width, total_h, style="F")
-        pdf.set_y(box_top + TABLE_PADDING)
+        page_body_h = self.page_h - 2 * self.margin - 8
+
+        # Pre-compute syntax token lines if applicable.
         token_lines = None
         if _PYGMENTS and self.syntax_highlight and language:
             try:
@@ -849,15 +863,61 @@ class MDToPDFConverter:
                 token_lines = self._tokens_to_lines(raw_tokens)
             except ClassNotFound:
                 pass
-        inner_w = self.available_width - 2 * TABLE_PADDING
-        for line_idx, ln in enumerate(final_lines):
-            pdf.set_x(self.margin + TABLE_PADDING)
-            if token_lines and line_idx < len(token_lines):
-                self._write_highlighted_line(pdf, token_lines[line_idx], line_h, inner_w)
-            else:
-                pdf.set_text_color(30, 30, 30)
-                pdf.cell(inner_w, line_h, ln)
-            pdf.ln(line_h)
+
+        def _remaining():
+            return self.page_h - self.margin - 8 - pdf.get_y()
+
+        def _draw_bg(top_y, n_lines, extra_bottom=TABLE_PADDING):
+            h = line_h * n_lines + extra_bottom
+            pdf.set_fill_color(r, g, b)
+            pdf.rect(self.margin, top_y, self.available_width, h, style="F")
+
+        # If the whole block fits on a fresh page and does not fit remaining
+        # space, pre-emptively page-break so the first rect covers it all.
+        if total_h > _remaining() and total_h <= page_body_h:
+            pdf.add_page()
+
+        inner_w  = self.available_width - 2 * TABLE_PADDING
+        n        = len(final_lines)
+        line_idx = 0
+
+        while line_idx < n:
+            # How many lines fit in remaining space on this page?
+            avail     = _remaining()
+            fit_lines = max(0, int((avail - TABLE_PADDING) / line_h))
+            remaining_total = n - line_idx
+
+            if fit_lines <= 0:
+                # No room at all - just break.
+                pdf.add_page()
+                fit_lines = max(0, int((_remaining() - TABLE_PADDING) / line_h))
+
+            chunk = min(fit_lines, remaining_total)
+            is_last_chunk = (line_idx + chunk >= n)
+
+            # Draw background rect for this chunk.
+            box_top = pdf.get_y()
+            extra   = TABLE_PADDING if is_last_chunk else 0
+            _draw_bg(box_top, chunk, extra_bottom=extra)
+
+            # Render lines in this chunk.
+            #pdf.set_y(box_top + (TABLE_PADDING if line_idx == 0 else 0))
+            pdf.set_y(box_top)
+            for k in range(chunk):
+                idx = line_idx + k
+                pdf.set_x(self.margin + TABLE_PADDING)
+                if token_lines and idx < len(token_lines):
+                    self._write_highlighted_line(pdf, token_lines[idx], line_h, inner_w)
+                else:
+                    pdf.set_text_color(30, 30, 30)
+                    pdf.cell(inner_w, line_h, final_lines[idx])
+                pdf.set_y(pdf.get_y() + line_h)
+
+            line_idx += chunk
+
+            if line_idx < n:
+                pdf.add_page()
+
         pdf.set_text_color(0, 0, 0)
         pdf.set_font(self._body_font_name, size=self.font_size)
 
@@ -892,27 +952,40 @@ class MDToPDFConverter:
         if not rows:
             return
         n_cols = max(len(row) for row in rows)
-        cell_w = self.available_width / max(n_cols, 1)
-        line_h = self.font_size * 0.4 + 1.5
-        min_h     = line_h * min(2, len(rows))
-        total_h   = line_h * len(rows)
-        remaining = self.page_h - self.margin - 8 - pdf.get_y()
-        if min_h > remaining:
-            pdf.add_page()
-        elif total_h <= (self.page_h - 2 * self.margin - 8) and total_h > remaining:
-            pdf.add_page()
-        for row_idx, row in enumerate(rows):
-            if row_idx == 0:
-                pdf.set_fill_color(220, 220, 220)
-                pdf.set_font(self._body_font_name, style="B", size=self.font_size)
-            else:
-                pdf.set_fill_color(*(248, 248, 248) if row_idx % 2 == 0 else (255, 255, 255))
-                pdf.set_font(self._body_font_name, size=self.font_size)
-            for col_idx in range(n_cols):
-                text  = row[col_idx] if col_idx < len(row) else ""
-                align = alignments[col_idx] if col_idx < len(alignments) else "L"
-                pdf.cell(cell_w, line_h, text, border=1, align=align, fill=True)
-            pdf.ln(line_h)
+
+        # Build column alignment list for fpdf2 table()
+        col_aligns = []
+        for i in range(n_cols):
+            a = alignments[i] if i < len(alignments) else "L"
+            col_aligns.append(a)
+
+        # Style for header row
+        header_style = FontFace(
+            emphasis="BOLD",
+            fill_color=(220, 220, 220),
+        )
+
+        pdf.set_font(self._body_font_name, size=self.font_size)
+        with pdf.table(
+            col_widths=tuple([self.available_width / n_cols] * n_cols),
+            text_align=tuple(col_aligns),
+            line_height=self.font_size * 0.4 + 1.5,
+            borders_layout="ALL",
+            first_row_as_headings=True,
+            headings_style=header_style,
+        ) as table:
+            for row_idx, row in enumerate(rows):
+                # Alternating row fill for body rows
+                if row_idx > 0:
+                    fill = (248, 248, 248) if row_idx % 2 == 0 else (255, 255, 255)
+                    row_style = FontFace(fill_color=fill)
+                else:
+                    row_style = None
+                t_row = table.row(style=row_style)
+                for col_idx in range(n_cols):
+                    text = row[col_idx] if col_idx < len(row) else ""
+                    t_row.cell(text)
+
         pdf.set_font(self._body_font_name, size=self.font_size)
 
     # ------------------------------------------------------------------
@@ -1085,13 +1158,12 @@ class _DocumentPDF(FPDF):
     def __init__(self, doc_title, margin, font_size, hf_font_size,
                  heading_color, body_font_name, **kwargs):
         super().__init__(**kwargs)
-        self._doc_title     = doc_title
-        self._margin        = margin
-        self._font_size     = font_size
-        self._hf_font_size  = hf_font_size
-        self._heading_color = heading_color
-        self._body_font     = body_font_name
-
+        self._doc_title          = doc_title
+        self._margin             = margin
+        self._font_size          = font_size
+        self._hf_font_size       = hf_font_size
+        self._heading_color      = heading_color
+        self._body_font          = body_font_name
     def header(self):
         self.set_font(self._body_font, style="I", size=self._hf_font_size)
         r, g, b = self._heading_color

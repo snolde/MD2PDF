@@ -1020,6 +1020,53 @@ class MDToPDFConverter:
         else:
             return None
 
+    def _strip_icc_profile(self, data : bytes):
+        """
+        Remove ICC profile APP2 markers from raw JPEG bytes.
+        Returns BytesIO of the cleaned image.
+        JPEG structure: SOI (0xFFD8), then markers: 0xFF <type> <2-byte length> <data>
+        ICC profile markers are APP2 (0xFFE2) starting with b'ICC_PROFILE\x00'
+        """
+        ICC_MARKER = b'\xff\xe2'
+        ICC_SIG    = b'ICC_PROFILE\x00'
+        out = bytearray()
+        i   = 0
+    # copy SOI (first 2 bytes) unconditionally
+        if data[:2] != b'\xff\xd8':
+            raise ValueError("Not a JPEG file")
+        out += data[:2]
+        i = 2
+        while i < len(data):
+            if data[i] != 0xFF:
+                break  # not a marker, rest is entropy-coded image data
+            marker = data[i:i+2]
+            # markers without a length field (SOI, EOI, RST*)
+            if marker[1] in (0xD8, 0xD9) or (0xD0 <= marker[1] <= 0xD7):
+                out += marker
+                i += 2
+                continue
+            if i + 4 > len(data):
+                break
+            length = (data[i+2] << 8) | data[i+3]  # includes the 2 length bytes
+            segment = data[i:i+2+length]
+            # skip APP2 segments that carry ICC profile data
+            if (marker == ICC_MARKER and
+                    segment[4:4+len(ICC_SIG)] == ICC_SIG):
+                i += 2 + length
+                continue
+            out += segment
+            i += 2 + length
+        # append any remaining entropy-coded data
+        out += data[i:]
+        from io import BytesIO
+        buf = BytesIO(bytes(out))
+        return buf
+        
+    def _get_viewport(self, pdf):
+        height = self.page_h - pdf.get_y()
+        weight = self.page_w - 2 * self.margin       
+        return width, height
+    
     def _embed_image(self, pdf, img_path, label):
         """
         Embed image with smart sizing:
@@ -1029,6 +1076,7 @@ class MDToPDFConverter:
           - Align left or center per image.align.
         Pillow is used to read natural dimensions (lazy header read, no pixel load).
         """
+        do_embed = True
         try:
             with PilImage.open(img_path) as im:
                 px_w, px_h = im.size
@@ -1067,7 +1115,7 @@ class MDToPDFConverter:
                 render_h = max_h_mm
 
             # Step 4: decide whether to fit into remaining space or page break.
-            remaining          = self.page_h - self.margin - 8 - pdf.get_y()
+            remaining = self.page_h - self.margin - 8 - pdf.get_y()
             effective_remaining = min(remaining, max_h_mm)
             remaining_ratio     = effective_remaining / max_w_mm if max_w_mm > 0 else 0.0
             print(f"dbg: viewport {max_w_mm:.1f} x {effective_remaining:.1f}")
@@ -1086,7 +1134,7 @@ class MDToPDFConverter:
                     render_w = w_if_fitted
                     render_h = effective_remaining
                 else:
-                    # Shrinking would make image too small — page break and keep size.
+                # Shrinking would make image too small — page break and keep size.
                     print("page break keep size")
                     pdf.add_page()
 
@@ -1104,9 +1152,14 @@ class MDToPDFConverter:
             pdf.set_auto_page_break(auto=False)
             try:
                 pdf.image(img_path, x=x, w=render_w)
+            except ImportError:
+                with open(img_path, 'rb') as f:
+                    raw = f.read()
+                    buf = self._strip_icc_profile(raw)
+                    buf.seek(0)
+                pdf.image(buf, x=x, w=render_w)
             finally:
                 pdf.set_auto_page_break(auto=True, margin=self.margin + 8)
-
         except Exception as exc:
             print(f"[WARN] Could not embed image {img_path}: {exc}")
             self._draw_placeholder(pdf, label or img_path)
